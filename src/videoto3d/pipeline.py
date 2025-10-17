@@ -119,21 +119,22 @@ def run_pipeline(
     report_progress("extract", 1.0)
 
     pano_frame_paths: Iterable[Path] = frames
-    if config.panorama_max_images and config.panorama_max_images > 0:
-        limit = config.panorama_max_images
-        if len(frames) > limit:
-            indices = [int(round(i)) for i in _linspace_indices(0, len(frames) - 1, limit)]
-            unique_indices = sorted(set(max(0, min(len(frames) - 1, idx)) for idx in indices))
-            if len(unique_indices) < 2 and len(frames) >= 2:
-                unique_indices = [0, len(frames) - 1]
-            pano_frame_paths = [frames[idx] for idx in unique_indices]
-            notify(
-                "Panorama will use %d frames (downsampled from %d)." % (len(unique_indices), len(frames))
-            )
+    if not config.existing_panorama:
+        if config.panorama_max_images and config.panorama_max_images > 0:
+            limit = config.panorama_max_images
+            if len(frames) > limit:
+                indices = [int(round(i)) for i in _linspace_indices(0, len(frames) - 1, limit)]
+                unique_indices = sorted(set(max(0, min(len(frames) - 1, idx)) for idx in indices))
+                if len(unique_indices) < 2 and len(frames) >= 2:
+                    unique_indices = [0, len(frames) - 1]
+                pano_frame_paths = [frames[idx] for idx in unique_indices]
+                notify(
+                    "Panorama will use %d frames (downsampled from %d)." % (len(unique_indices), len(frames))
+                )
+            else:
+                notify(f"Panorama will use all {len(frames)} frames.")
         else:
             notify(f"Panorama will use all {len(frames)} frames.")
-    else:
-        notify(f"Panorama will use all {len(frames)} frames.")
 
     report_progress("panorama", 0.0)
 
