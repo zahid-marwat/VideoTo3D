@@ -1,0 +1,51 @@
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors/IDE
+.vscode/
+.idea/
+*.iml
+
+# Dependencies and builds
+node_modules/
+dist/
+build/
+coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.cache/
+pip-wheel-metadata/
+.ipynb_checkpoints
+.coverage*
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+*.jpg
