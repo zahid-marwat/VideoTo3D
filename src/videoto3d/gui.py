@@ -17,6 +17,7 @@ from PIL import Image, ImageTk
 
 from .pipeline import PipelineConfig, PipelineOutputs, run_pipeline
 from .panorama import is_gpu_available as pano_gpu_available
+from .point_cloud_viewer import PointCloudViewerError, view_point_cloud
 
 
 def _open_path(path: Path) -> None:
@@ -51,6 +52,7 @@ class VideoTo3DApp(tk.Tk):
         self.pano_gpu_var = tk.BooleanVar(value=self._pano_gpu_available)
         self.use_existing_pano_var = tk.BooleanVar(value=False)
         self.existing_pano_path_var = tk.StringVar()
+        self.colmap_bin_var = tk.StringVar()
         self.quality_var = tk.StringVar(value="medium")
         self.status_var = tk.StringVar(value="Idle.")
 
@@ -78,9 +80,10 @@ class VideoTo3DApp(tk.Tk):
         files_frame.columnconfigure(1, weight=1)
 
         ttk.Label(files_frame, text="Video file:").grid(row=0, column=0, sticky="w", padx=6, pady=4)
-        video_entry = ttk.Entry(files_frame, textvariable=self.video_path_var, width=60)
-        video_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
-        ttk.Button(files_frame, text="Browse…", command=self._browse_video).grid(row=0, column=2, padx=6, pady=4)
+        self.video_entry = ttk.Entry(files_frame, textvariable=self.video_path_var, width=60)
+        self.video_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        self.video_button = ttk.Button(files_frame, text="Browse…", command=self._browse_video)
+        self.video_button.grid(row=0, column=2, padx=6, pady=4)
 
         ttk.Label(files_frame, text="Workspace:").grid(row=1, column=0, sticky="w", padx=6, pady=4)
         workspace_entry = ttk.Entry(files_frame, textvariable=self.workspace_var, width=60)
@@ -88,10 +91,16 @@ class VideoTo3DApp(tk.Tk):
         ttk.Button(files_frame, text="Browse…", command=self._browse_workspace).grid(row=1, column=2, padx=6, pady=4)
 
         ttk.Label(files_frame, text="Existing panorama:").grid(row=2, column=0, sticky="w", padx=6, pady=4)
-        self.existing_pano_entry = ttk.Entry(files_frame, textvariable=self.existing_pano_path_var, width=60, state="disabled")
+        self.existing_pano_entry = ttk.Entry(files_frame, textvariable=self.existing_pano_path_var, width=60, state="readonly")
         self.existing_pano_entry.grid(row=2, column=1, sticky="ew", padx=6, pady=4)
-        self.existing_pano_button = ttk.Button(files_frame, text="Browse…", command=self._browse_existing_panorama, state="disabled")
-        self.existing_pano_button.grid(row=2, column=2, padx=6, pady=4)
+        pano_buttons = ttk.Frame(files_frame)
+        pano_buttons.grid(row=2, column=2, padx=6, pady=4, sticky="ew")
+        pano_buttons.columnconfigure(0, weight=1)
+        pano_buttons.columnconfigure(1, weight=1)
+        self.existing_pano_button = ttk.Button(pano_buttons, text="Select…", command=self._select_existing_panorama)
+        self.existing_pano_button.grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        self.clear_existing_pano_button = ttk.Button(pano_buttons, text="Clear", command=self._clear_existing_panorama)
+        self.clear_existing_pano_button.grid(row=0, column=1, sticky="ew")
 
         options = ttk.LabelFrame(controls, text="2. Configure options")
         options.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
@@ -135,6 +144,21 @@ class VideoTo3DApp(tk.Tk):
             command=self._on_use_existing_pano_toggle,
         )
         self.use_existing_pano_check.grid(row=4, column=0, columnspan=2, sticky="w", padx=6, pady=4)
+
+        ttk.Label(options, text="COLMAP executable:").grid(row=4, column=2, sticky="w", padx=6, pady=4)
+        colmap_bin_frame = ttk.Frame(options)
+        colmap_bin_frame.grid(row=4, column=3, sticky="ew", padx=6, pady=4)
+        colmap_bin_frame.columnconfigure(0, weight=1)
+        self.colmap_bin_entry = ttk.Entry(colmap_bin_frame, textvariable=self.colmap_bin_var, width=20)
+        self.colmap_bin_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(colmap_bin_frame, text="Browse…", command=self._browse_colmap_bin).grid(row=0, column=1, padx=(6, 0))
+        ttk.Label(options, text="Type 'pycolmap' to use the Python bindings.").grid(
+            row=5,
+            column=3,
+            sticky="w",
+            padx=6,
+            pady=(0, 4),
+        )
 
         ttk.Label(options, text="COLMAP quality:").grid(row=3, column=2, sticky="e", padx=6, pady=4)
         quality_combo = ttk.Combobox(options, textvariable=self.quality_var, values=["low", "medium", "high"], state="readonly", width=10)
@@ -259,7 +283,7 @@ class VideoTo3DApp(tk.Tk):
         if result:
             self.workspace_var.set(result)
 
-    def _browse_existing_panorama(self) -> None:
+    def _select_existing_panorama(self) -> None:
         result = filedialog.askopenfilename(
             title="Select panorama image",
             filetypes=[
@@ -269,12 +293,35 @@ class VideoTo3DApp(tk.Tk):
         )
         if result:
             self.existing_pano_path_var.set(result)
+            self.use_existing_pano_var.set(True)
+            self._on_use_existing_pano_toggle()
+
+    def _clear_existing_panorama(self) -> None:
+        self.existing_pano_path_var.set("")
+        self.use_existing_pano_var.set(False)
+        self._on_use_existing_pano_toggle()
+
+    def _browse_colmap_bin(self) -> None:
+        result = filedialog.askopenfilename(
+            title="Select COLMAP executable",
+            filetypes=[
+                ("Executables", "*.exe"),
+                ("All files", "*.*"),
+            ],
+        )
+        if result:
+            self.colmap_bin_var.set(result)
 
     def _on_use_existing_pano_toggle(self) -> None:
-        use_existing = self.use_existing_pano_var.get()
-        entry_state = "normal" if use_existing else "disabled"
-        self.existing_pano_entry.configure(state=entry_state)
-        self.existing_pano_button.configure(state=entry_state)
+        use_existing = self.use_existing_pano_var.get() and bool(self.existing_pano_path_var.get().strip())
+        self.use_existing_pano_var.set(use_existing)
+        self.existing_pano_entry.configure(state="readonly")
+        self.existing_pano_button.configure(state="normal")
+        self.clear_existing_pano_button.configure(state="normal" if use_existing else "disabled")
+
+        video_state = "disabled" if use_existing else "normal"
+        self.video_entry.configure(state=video_state)
+        self.video_button.configure(state=video_state)
 
         dependent_state = "disabled" if use_existing else "normal"
         self.pano_width_entry.configure(state=dependent_state)
@@ -295,8 +342,6 @@ class VideoTo3DApp(tk.Tk):
         if self._worker and self._worker.is_alive():
             return
 
-        video_path = Path(self.video_path_var.get()).expanduser()
-
         use_existing_pano = self.use_existing_pano_var.get()
         existing_pano_path: Path | None = None
         if use_existing_pano:
@@ -308,6 +353,13 @@ class VideoTo3DApp(tk.Tk):
             if not existing_pano_path.exists() or not existing_pano_path.is_file():
                 messagebox.showerror("Panorama missing", "The selected panorama file does not exist.")
                 return
+
+        video_value = self.video_path_var.get().strip()
+        video_path: Path | None = Path(video_value).expanduser() if video_value else None
+
+        if video_path is None:
+            messagebox.showerror("Video missing", "Please choose a valid video file.")
+            return
 
         if not video_path.exists():
             messagebox.showerror("Video missing", "Please choose a valid video file.")
@@ -339,6 +391,8 @@ class VideoTo3DApp(tk.Tk):
             messagebox.showerror("Invalid panorama frame limit", "Panorama frame cap must be an integer.")
             return
 
+        colmap_bin_value = self.colmap_bin_var.get().strip()
+
         config = PipelineConfig(
             video_path=video_path,
             workspace=workspace,
@@ -349,6 +403,7 @@ class VideoTo3DApp(tk.Tk):
             panorama_use_gpu=(self.pano_gpu_var.get() and self._pano_gpu_available) if not use_existing_pano else False,
             existing_panorama=existing_pano_path,
             run_colmap=self.colmap_var.get(),
+            colmap_binary=colmap_bin_value or None,
             colmap_quality=self.quality_var.get(),
             use_gpu=self.gpu_var.get(),
             max_frames=max_frames_input if max_frames_input > 0 else None,
@@ -468,20 +523,11 @@ class VideoTo3DApp(tk.Tk):
             messagebox.showerror("Missing file", "Point cloud file not found.")
             return
         try:
-            import open3d as o3d  # type: ignore[import-not-found]
-
-            pcd = o3d.io.read_point_cloud(str(path))
-            if pcd.is_empty():
-                messagebox.showwarning("Empty cloud", "The point cloud appears to be empty.")
-                return
-            o3d.visualization.draw_geometries([pcd], window_name="VideoTo3D Point Cloud")
-        except ImportError:
-            try:
-                _open_path(path)
-            except Exception as exc:  # noqa: BLE001
-                messagebox.showerror("Open failed", str(exc))
-        except Exception as exc:  # noqa: BLE001
+            backend = view_point_cloud(path)
+        except PointCloudViewerError as exc:
             messagebox.showerror("Point cloud error", str(exc))
+        else:
+            self._append_log(f"Point cloud opened via {backend} viewer.\n")
 
     def _open_workspace(self) -> None:
         if not self.outputs:

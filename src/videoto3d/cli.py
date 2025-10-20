@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .panorama import DEFAULT_MAX_OUTPUT_PIXELS
 from .pipeline import PipelineConfig, run_pipeline
+from .point_cloud_viewer import PointCloudViewerError, view_point_cloud
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip COLMAP reconstruction stage.",
     )
     parser.add_argument(
+        "--colmap-bin",
+        type=str,
+        help=(
+            "Path to the COLMAP executable (defaults to looking up 'colmap' on PATH). "
+            "Pass 'pycolmap' to force the Python bindings."
+        ),
+    )
+    parser.add_argument(
         "--quality",
         choices=["low", "medium", "high"],
         default="medium",
@@ -80,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--pano-cpu",
         action="store_true",
         help="Force panorama stitching to run on CPU even if CUDA is available.",
+    )
+    parser.add_argument(
+        "--view-cloud",
+        action="store_true",
+        help="Launch a point cloud viewer after reconstruction completes.",
     )
     return parser
 
@@ -99,6 +113,7 @@ def main(args: list[str] | None = None) -> None:
         panorama_use_gpu=not parsed.pano_cpu,
         existing_panorama=parsed.pano_existing,
         run_colmap=not parsed.skip_colmap,
+        colmap_binary=parsed.colmap_bin,
         colmap_quality=parsed.quality,
         use_gpu=not parsed.cpu,
         max_frames=parsed.max_frames or None,
@@ -107,3 +122,15 @@ def main(args: list[str] | None = None) -> None:
     outputs = run_pipeline(config)
     print("Pipeline completed. Outputs:")
     print(outputs.to_json())
+
+    if parsed.view_cloud:
+        cloud_path = outputs.point_cloud_path
+        if not cloud_path or not cloud_path.exists():
+            print("Point cloud not available to view.")
+            return
+        try:
+            backend = view_point_cloud(cloud_path)
+        except PointCloudViewerError as exc:
+            print(f"Failed to open point cloud: {exc}")
+        else:
+            print(f"Point cloud opened via {backend} viewer.")

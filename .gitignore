@@ -49,3 +49,10 @@ temp/
 *.rar
 
 *.jpg
+*.png
+*.ply
+
+# Generated outputs
+workspace/
+video_data/
+panorama/

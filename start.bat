@@ -46,6 +46,10 @@ if exist requirements.txt (
 
 set "PYTHONPATH=%SCRIPT_DIR%src;%PYTHONPATH%"
 
+echo.
+echo Next steps: Open the GUI (or run "start.bat --cli --colmap-bin C:\Path\to\colmap.exe").
+echo Point the app at your COLMAP executable so the reconstruction stage can run.
+
 :: Allow explicit CLI execution
 if /I "%~1"=="--cli" (
     shift

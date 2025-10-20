@@ -57,6 +57,7 @@ class PipelineConfig:
     panorama_use_gpu: bool = True
     existing_panorama: Optional[Path] = None
     run_colmap: bool = True
+    colmap_binary: Optional[str] = None
     colmap_quality: str = "medium"
     use_gpu: bool = True
     max_frames: Optional[int] = 150
@@ -191,11 +192,18 @@ def run_pipeline(
     report_progress("colmap", 0.0)
     if config.run_colmap:
         try:
-            runner = ColmapRunner()
+            runner = ColmapRunner(colmap_bin=config.colmap_binary or "colmap")
         except ColmapNotInstalledError as exc:
             notify(f"COLMAP not available: {exc}. Skipping 3D reconstruction.")
             report_progress("colmap", 1.0)
         else:
+            if config.colmap_binary:
+                if config.colmap_binary.lower() == "pycolmap" and runner.using_pycolmap:
+                    notify("Using pycolmap Python bindings for reconstruction.")
+                else:
+                    notify(f"Using COLMAP executable: {config.colmap_binary}")
+            elif runner.using_pycolmap:
+                notify("COLMAP binary not found; using pycolmap Python bindings instead.")
             notify("Running COLMAP automatic reconstruction...")
             report_progress("colmap", 0.0)
             dense_folder = runner.automatic_reconstruction(
